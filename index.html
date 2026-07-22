@@ -119,9 +119,12 @@ nav{position:fixed;top:0;left:0;right:0;height:52px;background:rgba(0,0,0,0.85);
 
 /* ABOUT */
 .about-grid{display:grid;grid-template-columns:1fr 1fr;gap:5rem;align-items:start;margin-top:3.5rem}
-.about-body{font-size:1.15rem;color:rgba(255,255,255,0.5);line-height:1.9}
+.about-body{font-size:1.15rem;color:rgba(255,255,255,0.5);line-height:1.9;font-family:monospace}
 .about-body p{margin-bottom:1.4rem}
 .about-body strong{color:#fff;font-weight:600}
+.scramble-char{will-change:contents;transition:color .15s}
+.scramble-char.scrambling{color:var(--orange)}
+.scramble-word{display:inline-block;white-space:nowrap}
 .about-stats{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
 .stat-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:18px;padding:1.75rem;transition:border-color .2s}
 .stat-card:hover{border-color:rgba(255,106,0,0.3)}
@@ -480,6 +483,106 @@ window.addEventListener('scroll',()=>{
   document.querySelector('.hero-glow').style.transform=`translate(-50%,calc(-50% + ${y*0.25}px))`;
   document.getElementById('nav').style.background=y>50?'rgba(0,0,0,0.97)':'rgba(0,0,0,0.85)';
 });
+
+/* ── Scrambled Text Effect (About Section) ── */
+(function(){
+  function splitIntoChars(el){
+    const chars=[];
+    const nodes=Array.from(el.childNodes);
+    nodes.forEach(node=>{
+      if(node.nodeType===3){
+        const text=node.textContent;
+        const frag=document.createDocumentFragment();
+        // Split text into words and whitespace
+        const parts=text.split(/(\s+)/);
+        parts.forEach(part=>{
+          if(!part) return;
+          if(/^\s+$/.test(part)){
+            // Preserve whitespace as plain text
+            frag.appendChild(document.createTextNode(part));
+          } else {
+            // Wrap each word in a span to prevent mid-word breaks
+            const wordSpan=document.createElement('span');
+            wordSpan.className='scramble-word';
+            for(let i=0;i<part.length;i++){
+              const s=document.createElement('span');
+              s.className='scramble-char';
+              s.textContent=part[i];
+              s.dataset.content=part[i];
+              wordSpan.appendChild(s);
+              chars.push(s);
+            }
+            frag.appendChild(wordSpan);
+          }
+        });
+        node.parentNode.replaceChild(frag,node);
+      } else if(node.nodeType===1){
+        chars.push(...splitIntoChars(node));
+      }
+    });
+    return chars;
+  }
+
+  const aboutBody=document.querySelector('#about .about-body');
+  if(!aboutBody) return;
+
+  const paragraphs=aboutBody.querySelectorAll('p');
+  let allChars=[];
+  paragraphs.forEach(p=>{ allChars=allChars.concat(splitIntoChars(p)); });
+
+  const scrambleSet='.:·!#%&*@~^';
+  const RADIUS=100;
+  const activeTimers=new Map();
+
+  function runScramble(cursorX,cursorY){
+    allChars.forEach(c=>{
+      const r=c.getBoundingClientRect();
+      const charX=r.left+r.width/2;
+      const charY=r.top+r.height/2;
+      const dist=Math.hypot(cursorX-charX,cursorY-charY);
+
+      if(dist<RADIUS){
+        const original=c.dataset.content;
+        if(!original||!original.trim()) return;
+        if(activeTimers.has(c)) clearInterval(activeTimers.get(c));
+
+        c.classList.add('scrambling');
+        const duration=1200*(1-dist/RADIUS);
+        const step=50;
+        const total=Math.max(2,Math.floor(duration/step));
+        let tick=0;
+
+        const timer=setInterval(()=>{
+          tick++;
+          if(tick>=total){
+            c.textContent=original;
+            c.classList.remove('scrambling');
+            clearInterval(timer);
+            activeTimers.delete(c);
+          } else {
+            c.textContent=scrambleSet[Math.floor(Math.random()*scrambleSet.length)];
+          }
+        },step);
+        activeTimers.set(c,timer);
+      }
+    });
+  }
+
+  // Trigger on pointer movement
+  aboutBody.addEventListener('pointermove',e=>{
+    runScramble(e.clientX,e.clientY);
+  });
+
+  // Also trigger on scroll using the globally tracked mouse coords (mx, my)
+  let scrollRAF=null;
+  window.addEventListener('scroll',()=>{
+    if(scrollRAF) return;
+    scrollRAF=requestAnimationFrame(()=>{
+      runScramble(mx,my);
+      scrollRAF=null;
+    });
+  },{ passive:true });
+})();
 </script>
 </body>
 </html>
